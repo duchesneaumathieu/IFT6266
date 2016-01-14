@@ -1,0 +1,11 @@
+import numpy as np
+import theano
+import theano.tensor as T
+from MLP import MLP
+
+class MLPC:
+    def __init__(self, layers):
+        self.mlp = MLP(layers)
+        self.inputs = self.mlp.inputs
+        self.expression = T.nnet.softmax(self.mlp.expression)
+        self.function = theano.function(inputs=[self.inputs], outputs=self.expression)
