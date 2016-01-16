@@ -42,6 +42,7 @@ class SGD: #Stochastic Gradient Descent
             
     def gradient_descent(self, X, Y, VX, VY, alpha, batch_size, max_epoch=100, tol=-1e-3, verbose=False, test_x=None, test_ohy=None):
         if verbose: self._verbose_init()
+        if verbose: self.print_stats(X,Y,test_x,test_ohy)
         if self.n_epoch == 0: self.last_cost = self.cost.function(VX, VY)
         while(self.n_epoch < len(self.memory)):
             self._gradient_epoch(X, Y, batch_size, alpha)
