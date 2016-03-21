@@ -2,8 +2,8 @@ import numpy as np
 import pickle
 import theano
 import theano.tensor as T
-rng = np.random
-
+from theano import config
+from theano.tensor.shared_randomstreams import RandomStreams
 
 def relu(x):
     return T.maximum(0, x)
@@ -11,78 +11,306 @@ def relu(x):
 def no_function(x):
     return x
 
+###################
+#    Linearity    #
+###################
+class Linearity:
+    def __init__(self, dim_in, dim_out, weight_ini="rand"):
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.weight = self.weight_ini(weight_ini)
+        self.inputs = T.matrix()
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
+        
+    def weight_ini(self, ini):
+        if ini == "zeros":
+            w = theano.shared(np.zeros((self.dim_in, self.dim_out)), config.floatX)
+        elif ini == "iso":
+            d = max(self.dim_in, self.dim_out)
+            M = np.random.normal(size=(d, d))
+            U = np.linalg.eig(np.dot(M.T, M))[1]
+            if self.dim_in < self.dim_out:
+                w = theano.shared(U[:self.dim_in, :self.dim_out], config.floatX)
+            else:
+                w = theano.shared(U[:self.dim_in, :self.dim_out]*(np.sqrt(self.dim_in/float(self.dim_out))), config.floatX)
+        else: #rand
+            w = theano.shared((np.random.random((self.dim_in, self.dim_out))-0.5)/np.sqrt(self.dim_in+self.dim_out), config.floatX)
+        return w
+    
+    def apply(self, inputs):
+        return T.dot(inputs, self.weight)
 
-class Model:
-    def __init__(self):
-        self.updatable = None
-        self.others = None
-        self.updatable_items = []
-            
-    def mset(self, updatable, others):
-        self.others = others
-        self.updatable = updatable
-        for i in self.updatable: self.updatable_items += i.get_items()
+###################
+#       Bias      #
+###################
+class Bias:
+    def __init__(self, dim_out, bias_ini="zeros"):
+        self.dim_out = dim_out
+        self.bias = self.bias_ini(bias_ini)
+        self.inputs = T.matrix()
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
         
-    def save(self, name):
-        pickle.dump([self.updatable, self.others], open(name, "wb"))
+    def bias_ini(self, ini):
+        if ini == "rand":
+            b = theano.shared((np.random.random(self.dim_out)-0.5)/10, config.floatX)
+        elif ini == "ones":
+            b = theano.shared(np.ones(self.dim_out), config.floatX)
+        elif ini == "zeros":
+            b = theano.shared(np.zeros(self.dim_out), config.floatX)
+        else: #uniform
+            b = theano.shared(ini*np.ones(self.dim_out), config.floatX)
+        return b
         
-    def load(self, name):
-        self.updatable, self.others = pickle.load(open(name, "rb"))
-        for i in self.updatable: self.updatable_items += i.get_items()
-        
-    def mget(self):
-        return self.updatable+self.others
-            
-    def update_list(self, lamda, cost):
-        items = self.updatable_items
-        grad = T.grad(cost, items)
-        return [(items[i], items[i] - lamda * grad[i]) for i in range(len(items))]
+    def apply(self, inputs):
+        return inputs + self.bias
     
 
+###################
+#   NonLinearity  #
+###################
+class NonLinearity:
+    def __init__(self, non_lin):
+        self.non_lin = non_lin
+        self.inputs = T.matrix()
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
+        
+    def apply(self, inputs):
+        return self.non_lin(inputs)
+    
+    
+###################
+#    BatchNorm    #
+###################
+class BatchNormalization:
+    def __init__(self, dim_out, epsilon=1e-5):
+        self.dim_out = dim_out
+        self.epsilon = epsilon
+        self.mean = theano.shared(np.zeros(dim_out), config.floatX)
+        self.var = theano.shared(np.ones(dim_out))
+        self.gamma = theano.shared(np.ones(dim_out), config.floatX)
+        self.inputs = T.matrix()
+        self.train_cmp = theano.function([self.inputs], self.train_apply(self.inputs))
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
+        
+    def train_apply(self, inputs):
+        mean = T.mean(inputs, axis=0)
+        var = T.var(inputs, axis=0)
+        return self.gamma*(inputs - mean)/T.sqrt(var+self.epsilon)
+    
+    def compute_parameters(self, inputs):
+        self.mean.set_value(np.mean(inputs, axis=0))
+        self.var.set_value(np.var(inputs, axis=0))
+        
+    def apply(self, inputs):
+        return self.gamma*(inputs - self.mean)/T.sqrt(self.var+self.epsilon)
+    
+    
+###################
+#      Noise      #
+###################
+class Noise:
+    def __init__(self, dim_out, std=1e-2):
+        self.dim_out = dim_out
+        self.std = theano.shared(std)
+        self.rng = RandomStreams()
+        self.inputs = T.matrix()
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
+        
+    def apply(self, inputs):
+        return inputs + self.rng.normal(std=self.std, size=(inputs.shape[0], self.dim_out))
+    
+    
+###################
+#     Dropout     #
+###################
+class Dropout:
+    def __init__(self, dim_out):
+        self.dim_out = dim_out
+        self.rng = RandomStreams()
+        self.inputs = T.matrix()
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
+        
+    def apply(self, inputs):
+        mask = self.rng.binomial(n=1, p=0.5, size=(inputs.shape[0], self.dim_out))
+        return 2*inputs*T.cast(mask, theano.config.floatX) #multiply by 2 to keep the expected value of the norm the same
+    
+    
+###################
+#      Layer      #
+###################
+class Layer:
+    def __init__(self, dim_in, dim_out, non_linearity, weight_ini="rand", bias_ini="zeros",
+                 noise=False, batch_norm=False, dropout=False, noise_std=1e-2, batch_norm_epsilon=1e-5):
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        
+        self.noise_activated = noise
+        self.batch_norm_activated = batch_norm
+        self.dropout_activated = dropout
+        
+        self.linearity = Linearity(dim_in, dim_out, weight_ini=weight_ini)
+        self.batch_norm = BatchNormalization(dim_out, epsilon=batch_norm_epsilon)
+        self.bias = Bias(dim_out, bias_ini=bias_ini)
+        self.noise = Noise(dim_out, std=noise_std)
+        self.dropout = Dropout(dim_out)
+        self.non_linearity = NonLinearity(non_linearity)
+        
+        self.inputs = T.matrix()
+        self.train_cmp = theano.function([self.inputs], self.train_apply(self.inputs))
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
+        
+    def compute_parameters(self, inputs):
+        self.batch_norm.compute_parameters(self.linearity.cmp(inputs))
+        
+    def get_parameters(self):
+        parameters = [self.linearity.weight] + [self.bias.bias]
+        if self.batch_norm_activated: parameters += [self.batch_norm.gamma]
+        return parameters
+        
+    def train_apply(self, inputs):
+        x = self.linearity.apply(inputs)
+        if self.batch_norm_activated: x = self.batch_norm.train_apply(x)
+        if self.noise_activated: x = self.noise.apply(x)
+        if self.dropout_activated: x = self.dropout.apply(x)
+        x = self.bias.apply(x)
+        x = self.non_linearity.apply(x)
+        return x
+        
+    def apply(self, inputs):
+        x = self.linearity.apply(inputs)
+        if self.batch_norm_activated: x = self.batch_norm.apply(x)
+        x = self.bias.apply(x)
+        x = self.non_linearity.apply(x)
+        return x
+    
+    
+###################
+#       MLP       #
+###################
 class MLP:
-    def __init__(self, layers, inputs=None, expression=None, act_hidden=relu, act_output=T.nnet.softmax):
-        self.n_layers = len(layers)
-        self.inputs = inputs
-        if self.inputs is None: self.inputs = T.matrix("x")
-        self.act_hidden = act_hidden
-        self.act_output = act_output
+    def __init__(self, struct, inner_non_linearity, final_non_linearity, weight_ini="rand", bias_ini="zeros",
+                 noise=False, batch_norm=False, dropout=False, noise_std=1e-2, batch_norm_epsilon=1e-5):
+        assert len(struct) > 1, "struct should at least have lenght 2"
+        self.depth = len(struct)-1
+        self.layers = []
+        for i in range(self.depth-1):
+            self.layers += [Layer(struct[i], struct[i+1], inner_non_linearity,
+                                  weight_ini=weight_ini, bias_ini=bias_ini,
+                                  noise=noise, batch_norm=batch_norm, dropout=dropout,
+                                  noise_std=noise_std, batch_norm_epsilon=batch_norm_epsilon)]
+                            
+        self.layers += [Layer(struct[-2], struct[-1], final_non_linearity,
+                              weight_ini=weight_ini, bias_ini=bias_ini,
+                              noise=noise, batch_norm=batch_norm, dropout=dropout,
+                              noise_std=noise_std, batch_norm_epsilon=batch_norm_epsilon)]
         
-        self.W = [theano.shared((rng.random((layers[i],layers[i+1]))-0.5)/(layers[i]+layers[i+1]),
-                                name="W"+str(i)) for i in range(len(layers)-1)]
-        self.b = [theano.shared(np.zeros(layers[i+1]),
-                                name="b"+str(i)) for i in range(len(layers)-1)]
-        if expression is not None:
-            self.expression = self._construct_expression(expression)
-            self.function = theano.function(inputs=[self.inputs], outputs=self.expression)
-            self.partial_inputs = T.matrix("x")
-            self.partial_expression = self._construct_expression(self.partial_inputs)
-            self.partial_function = theano.function(inputs=[self.partial_inputs], outputs=self.partial_expression)
-        else:
-            self.expression = self._construct_expression(self.inputs)
-            self.function = theano.function(inputs=[self.inputs], outputs=self.expression)
-        y = T.matrix("y")
-        mc = T.mean(T.neq(T.argmax(self.expression, axis=1), T.argmax(y, axis=1)))
-        self.misclass = theano.function(inputs=[self.inputs, y], outputs=mc)
+        self.inputs = T.matrix()
+        self.train_cmp = theano.function([self.inputs], self.train_apply(self.inputs))
+        self.cmp = theano.function([self.inputs], self.apply(self.inputs))
         
-    def _construct_expression(self, expression):
-        if self.n_layers==1: return self.activation_output(expression)
-        for i in range(self.n_layers-2):
-            expression = self.act_hidden(T.dot(expression, self.W[i]) + self.b[i])
-        return self.act_output(T.dot(expression, self.W[-1]) + self.b[-1])
+    def get_parameters(self):
+        parameters = []
+        for layer in self.layers:
+            parameters += layer.get_parameters()
+        return parameters
+            
+    def cmp_grad(self, alpha, cost):
+        parameters = self.get_parameters()
+        grad = T.grad(cost, parameters)
+        return [(parameters[i], parameters[i] - alpha * grad[i]) for i in range(len(parameters))]
     
-    def get_items(self):
-        return self.W + self.b
+    def set_noise_std(self, std):
+        for layer in self.layers:
+            layer.noise.std.set_value(std)
+        
+    def compute_parameters(self, inputs):
+        x = inputs
+        for layer in self.layers:
+            layer.compute_parameters(x)
+            x = layer.cmp(x)
     
-    def update_list(self, lamda, cost):
-        items = self.W + self.b
-        grad = T.grad(cost, items)
-        return [(items[i], items[i] - lamda * grad[i]) for i in range(len(items))]
+    def train_apply(self, inputs):
+        x = inputs
+        for layer in self.layers:
+            x = layer.train_apply(x)
+        return x
     
-    def predict_proba(self, x):
-        return self.function(x)
+    def apply(self, inputs):
+        x = inputs
+        for layer in self.layers:
+            x = layer.apply(x)
+        return x
     
-    def predict(self, x):
-        return np.argmax(self.function(x), axis=1)
     
-    def accuracy(self, x, y):
-        return 1-self.misclass(x, y)
+###################
+#       LSTM       #
+###################
+class LSTM:
+    def __init__(self, inputs_size, depth=1):
+        self.depth = depth
+        self.inputs_size = inputs_size
+        self.rng = RandomStreams()
+        size = 2*inputs_size
+        self.forget_gate = MLP([size, size, inputs_size], relu, T.nnet.sigmoid,
+                          weight_ini="iso", bias_ini=2, noise=True, noise_std=0.05)
+        self.input_gate = MLP([size, size, inputs_size], relu, T.nnet.sigmoid,
+                          weight_ini="iso", noise=True, noise_std=0.05)
+        self.tanh_gate = MLP([size, size, inputs_size], T.tanh, T.tanh,
+                        weight_ini="iso", noise=True, noise_std=0.05)
+        self.output_gate = MLP([depth*inputs_size, size, inputs_size], relu, no_function,
+                       weight_ini="rand", noise=True, noise_std=0.05)
+    
+    def get_parameters(self):
+        parameters = self.forget_gate.get_parameters()
+        parameters += self.input_gate.get_parameters()
+        parameters += self.tanh_gate.get_parameters()
+        parameters += self.output_gate.get_parameters()
+        return parameters
+            
+    def cmp_grad(self, alpha, cost):
+        parameters = self.get_parameters()
+        grad = T.grad(cost, parameters)
+        return [(parameters[i], parameters[i] - alpha * grad[i]) for i in range(len(parameters))]
+    
+    
+    def unfold_train_apply(self, inputs, lenght, memory=None):
+        if memory is None: memory = [self.rng.normal(std=1e-2, size=(inputs[0].shape[0], self.inputs_size)) for i in range(self.depth)]
+        outputs = []
+        for i in range(lenght):
+            y, memory = self.train_apply((inputs[i], memory))
+            outputs += [y]
+        return outputs, T.concatenate(memory, axis=1)
+        
+    def unfold_apply(self, inputs, lenght, memory=None):
+        if memory is None: memory = [self.rng.normal(std=1e-2, size=(inputs[0].shape[0], self.inputs_size)) for i in range(self.depth)]
+        outputs = []
+        for i in range(lenght):
+            y, memory = self.apply((inputs[i], memory))
+            outputs += [y]
+        return outputs, T.concatenate(memory, axis=1)
+        
+    def train_apply(self, inputs): 
+        x, memory_cells = inputs
+        out_memory = []
+        for d in range(self.depth):
+            memory = memory_cells[d]
+            inputs_d = T.concatenate([memory, x], axis=1)
+            forgeted_memory = memory*self.forget_gate.train_apply(inputs_d)
+            x = forgeted_memory + self.input_gate.train_apply(inputs_d)*self.tanh_gate.train_apply(inputs_d)
+            out_memory += [x]
+        concat_memory = T.concatenate(out_memory, axis=1)
+        y = self.output_gate.train_apply(concat_memory)
+        return y, out_memory
+        
+    def apply(self, inputs): 
+        x, memory_cells = inputs
+        out_memory = []
+        for d in range(self.depth):
+            memory = memory_cells[d]
+            inputs_d = T.concatenate([memory, x], axis=1)
+            forgeted_memory = memory*self.forget_gate.apply(inputs_d)
+            x = forgeted_memory + self.input_gate.apply(inputs_d)*self.tanh_gate.apply(inputs_d)
+            out_memory += [x]
+        concat_memory = T.concatenate(out_memory, axis=1)
+        y = self.output_gate.apply(concat_memory)
+        return y, out_memory
