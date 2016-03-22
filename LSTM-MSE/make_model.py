@@ -27,7 +27,7 @@ print "Computing LSTM's unfold expression..."
 expression = lstm.unfold_train_apply(x, unfold)
 
 print "Computing MSE cost expression..."
-cost = theano.tensor.sum((expression[0] - y)**2)
+cost = theano.tensor.mean((expression[0] - y)**2)
 
 print "Constructing params..."
 params = [inputs_size, unfold]

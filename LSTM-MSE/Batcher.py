@@ -1,5 +1,6 @@
 import numpy as np
 import pickle
+from theano import config
 from Utilities.Sound import *
 
 class Batcher:
@@ -30,4 +31,4 @@ class Batcher:
                                                                                                           n_seq, seq_lenght)),0,1)
         x_hat = 2*(x-self.min)/float(self.max-self.min)-1
         y_hat = 2*(x-self.min)/float(self.max-self.min)-1
-        return [x_hat, y_hat]
+        return [x_hat.astype(config.floatX), y_hat.astype(config.floatX)]

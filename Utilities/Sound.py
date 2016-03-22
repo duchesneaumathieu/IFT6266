@@ -1,4 +1,4 @@
-import alsaaudio
+#import alsaaudio
 import numpy as np
 from numpy.fft import rfft, irfft
 import matplotlib.pyplot as plt

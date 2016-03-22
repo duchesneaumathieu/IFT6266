@@ -24,21 +24,21 @@ class Linearity:
         
     def weight_ini(self, ini):
         if ini == "zeros":
-            w = theano.shared(np.zeros((self.dim_in, self.dim_out)), config.floatX)
+            w = theano.shared(np.zeros((self.dim_in, self.dim_out)).astype(config.floatX))
         elif ini == "iso":
             d = max(self.dim_in, self.dim_out)
             M = np.random.normal(size=(d, d))
             U = np.linalg.eig(np.dot(M.T, M))[1]
             if self.dim_in < self.dim_out:
-                w = theano.shared(U[:self.dim_in, :self.dim_out], config.floatX)
+                w = theano.shared(U[:self.dim_in, :self.dim_out].astype(config.floatX))
             else:
-                w = theano.shared(U[:self.dim_in, :self.dim_out]*(np.sqrt(self.dim_in/float(self.dim_out))), config.floatX)
+                w = theano.shared((U[:self.dim_in, :self.dim_out]*(np.sqrt(self.dim_in/float(self.dim_out)))).astype(config.floatX))
         else: #rand
-            w = theano.shared((np.random.random((self.dim_in, self.dim_out))-0.5)/np.sqrt(self.dim_in+self.dim_out), config.floatX)
+            w = theano.shared(((np.random.random((self.dim_in, self.dim_out))-0.5)/np.sqrt(self.dim_in+self.dim_out)).astype(config.floatX))
         return w
     
     def apply(self, inputs):
-        return T.dot(inputs, self.weight)
+        return T.dot(T.cast(inputs, config.floatX), self.weight)
 
 ###################
 #       Bias      #
@@ -52,13 +52,13 @@ class Bias:
         
     def bias_ini(self, ini):
         if ini == "rand":
-            b = theano.shared((np.random.random(self.dim_out)-0.5)/10, config.floatX)
+            b = theano.shared(((np.random.random(self.dim_out)-0.5)/10).astype(config.floatX))
         elif ini == "ones":
-            b = theano.shared(np.ones(self.dim_out), config.floatX)
+            b = theano.shared(np.ones(self.dim_out).astype(config.floatX))
         elif ini == "zeros":
-            b = theano.shared(np.zeros(self.dim_out), config.floatX)
+            b = theano.shared(np.zeros(self.dim_out).astype(config.floatX))
         else: #uniform
-            b = theano.shared(ini*np.ones(self.dim_out), config.floatX)
+            b = theano.shared((ini*np.ones(self.dim_out)).astype(config.floatX))
         return b
         
     def apply(self, inputs):
@@ -85,9 +85,9 @@ class BatchNormalization:
     def __init__(self, dim_out, epsilon=1e-5):
         self.dim_out = dim_out
         self.epsilon = epsilon
-        self.mean = theano.shared(np.zeros(dim_out), config.floatX)
-        self.var = theano.shared(np.ones(dim_out))
-        self.gamma = theano.shared(np.ones(dim_out), config.floatX)
+        self.mean = theano.shared(np.zeros(dim_out).astype(config.floatX))
+        self.var = theano.shared(np.ones(dim_out).astype(config.floatX))
+        self.gamma = theano.shared(np.ones(dim_out).astype(config.floatX))
         self.inputs = T.matrix()
         self.train_cmp = theano.function([self.inputs], self.train_apply(self.inputs))
         self.cmp = theano.function([self.inputs], self.apply(self.inputs))
@@ -117,7 +117,7 @@ class Noise:
         self.cmp = theano.function([self.inputs], self.apply(self.inputs))
         
     def apply(self, inputs):
-        return inputs + self.rng.normal(std=self.std, size=(inputs.shape[0], self.dim_out))
+        return inputs + self.rng.normal(std=self.std, size=(inputs.shape[0], self.dim_out), dtype=config.floatX)
     
     
 ###################
@@ -252,13 +252,13 @@ class LSTM:
         self.rng = RandomStreams()
         size = 2*inputs_size
         self.forget_gate = MLP([size, size, inputs_size], relu, T.nnet.sigmoid,
-                          weight_ini="iso", bias_ini=2, noise=True, noise_std=0.05)
+                          weight_ini="iso", bias_ini=2, noise=True, noise_std=5e-3)
         self.input_gate = MLP([size, size, inputs_size], relu, T.nnet.sigmoid,
-                          weight_ini="iso", noise=True, noise_std=0.05)
+                          weight_ini="iso", noise=True, noise_std=5e-3)
         self.tanh_gate = MLP([size, size, inputs_size], T.tanh, T.tanh,
-                        weight_ini="iso", noise=True, noise_std=0.05)
+                        weight_ini="iso", noise=True, noise_std=5e-3)
         self.output_gate = MLP([depth*inputs_size, size, inputs_size], relu, no_function,
-                       weight_ini="rand", noise=True, noise_std=0.05)
+                       weight_ini="rand", noise=True, noise_std=5e-3)
     
     def get_parameters(self):
         parameters = self.forget_gate.get_parameters()
