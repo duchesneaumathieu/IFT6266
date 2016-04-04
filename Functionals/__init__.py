@@ -266,6 +266,14 @@ class LSTM:
         parameters += self.tanh_gate.get_parameters()
         parameters += self.output_gate.get_parameters()
         return parameters
+
+    def copy(self):
+        copy = LSTM(self.inputs_size, self.depth)
+        params = self.get_parameters()
+        copy_params = copy.get_parameters()
+        for i in range(len(params)):
+            copy_params[i].set_value(params[i].get_value().copy())
+        return copy
             
     def cmp_grad(self, alpha, cost):
         parameters = self.get_parameters()
@@ -279,7 +287,7 @@ class LSTM:
         for i in range(lenght):
             y, memory = self.train_apply((inputs[i], memory))
             outputs += [y]
-        return outputs, T.concatenate(memory, axis=1)
+        return T.as_tensor_variable(outputs), T.as_tensor_variable(memory)
         
     def unfold_apply(self, inputs, lenght, memory=None):
         if memory is None: memory = [self.rng.normal(std=1e-2, size=(inputs[0].shape[0], self.inputs_size)) for i in range(self.depth)]
@@ -287,7 +295,7 @@ class LSTM:
         for i in range(lenght):
             y, memory = self.apply((inputs[i], memory))
             outputs += [y]
-        return outputs, T.concatenate(memory, axis=1)
+        return T.as_tensor_variable(outputs), T.as_tensor_variable(memory)
         
     def train_apply(self, inputs): 
         x, memory_cells = inputs

@@ -30,5 +30,5 @@ class Batcher:
         y = np.swapaxes(np.asarray([sound[s+seq_lenght:s+seq_lenght*(n_seq+1)] for s in starts]).reshape((batch_size,
                                                                                                           n_seq, seq_lenght)),0,1)
         x_hat = 2*(x-self.min)/float(self.max-self.min)-1
-        y_hat = 2*(x-self.min)/float(self.max-self.min)-1
+        y_hat = 2*(y-self.min)/float(self.max-self.min)-1
         return [x_hat.astype(config.floatX), y_hat.astype(config.floatX)]
