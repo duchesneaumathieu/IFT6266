@@ -1,6 +1,7 @@
 import numpy as np
 from theano import config
 from Utilities.Sound import *
+from Utilities.Pretreament import Normalize
 
 class TDB: #Time Domain Batcher
     def __init__(self, name, batch_dim, preprocess=Normalize(), rate=16000, n_valid=128):

@@ -1,3 +1,20 @@
+import numpy as np
+
+class Normalize:
+    def __init__(self):
+        self.min = None
+        self.max = None
+    
+    def fit(self, x):
+        self.min = np.min(x)
+        self.max = np.max(x)
+    
+    def cmp(self, x):
+        return 2*(x-self.min)/(self.max-self.min)-1
+    
+    def uncmp(self, x):
+        return (x+1)/2*(self.max-self.min)+self.min
+
 class nPCA:
     def __init__(self):
         self.mean = None

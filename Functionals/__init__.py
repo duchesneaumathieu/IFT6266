@@ -243,7 +243,7 @@ class MLP:
     
     
 ###################
-#       LSTM       #
+#       LSTM      #
 ###################
 class LSTM:
     def __init__(self, inputs_size, depth=1):
@@ -322,3 +322,128 @@ class LSTM:
         concat_memory = T.concatenate(out_memory, axis=1)
         y = self.output_gate.apply(concat_memory)
         return y, out_memory
+    
+    
+###################
+#       GRU       #
+###################
+class GRU:
+    def __init__(self, inputs_dim, hidden_dim):
+        self.inputs_dim = inputs_dim
+        self.hidden_dim = hidden_dim
+        dim = inputs_dim + hidden_dim
+        
+        self.init_h = theano.shared(np.zeros((1,hidden_dim)).astype(config.floatX), broadcastable=(True,False))
+        self.read_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
+        self.update_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
+        self.tanh_gate = Layer(dim, hidden_dim, T.tanh, weight_ini="iso")
+        
+    def get_parameters(self):
+        parameters = self.read_gate.get_parameters()+self.update_gate.get_parameters()+self.tanh_gate.get_parameters()
+        return parameters+[self.init_h]
+        
+    def copy(self):
+        copy = GRU(self.inputs_dim, self.hidden_dim)
+        params = self.get_parameters()
+        copy_params = copy.get_parameters()
+        for i in range(len(params)):
+            copy_params[i].set_value(params[i].get_value().copy())
+        return copy
+    
+    def cmp_grad(self, alpha, cost):
+        parameters = self.get_parameters()
+        grad = T.grad(cost, parameters)
+        return [(parameters[i], parameters[i] - alpha * grad[i]) for i in range(len(parameters))]
+    
+    def apply(self, inputs):
+        x, h = inputs
+        if h is None: h = self.init_h
+        hx = T.concatenate([h*T.ones((x.shape[0], h.shape[1])),x], axis=1)
+        read = self.read_gate.apply(hx)
+        update = self.update_gate.apply(hx)
+        rx = T.concatenate([read,x], axis=1)
+        tanh = self.tanh_gate.apply(rx)
+        return h*(1-update) + tanh*update
+    
+    
+###################
+#      DUGRU      #
+###################
+class DUGRU: #Deep Unshared GRU
+    def __init__(self, struct):
+        self.struct = struct
+        self.depth = len(struct)-1
+        self.grus = [GRU(struct[i], struct[i+1]) for i in range(self.depth)]
+        
+    def get_parameters(self):
+        parameters = []
+        for i in range(self.depth):
+            parameters += self.grus[i].get_parameters()
+        return parameters
+    
+    def copy(self):
+        copy = DUGRU(self.struct)
+        params = self.get_parameters()
+        copy_params = copy.get_parameters()
+        for i in range(len(params)):
+            copy_params[i].set_value(params[i].get_value().copy())
+        return copy
+    
+    def cmp_grad(self, alpha, cost):
+        parameters = self.get_parameters()
+        grad = T.grad(cost, parameters)
+        return [(parameters[i], parameters[i] - alpha * grad[i]) for i in range(len(parameters))]
+    
+    def unfold_apply(self, inputs, unfold):
+        h = [None for i in range(self.depth)]
+        top_hs = []
+        for i in range(unfold):
+            h = self.apply([inputs[i]]+h)
+            top_hs += [h[-1]]
+        return T.as_tensor_variable(top_hs)
+            
+    def apply(self, inputs):
+        out = [inputs[0]]
+        for i in range(self.depth):
+            out += [self.grus[i].apply([out[i], inputs[i+1]])]
+        return out[1:]
+    
+    
+###################
+#       DGRU      #
+###################
+class DGRU: #Deep GRU
+    def __init__(self, dim, depth):
+        self.dim = dim
+        self.depth = depth
+        self.gru = GRU(dim, dim)
+        
+    def get_parameters(self):
+        return self.gru.get_parameters()
+    
+    def copy(self):
+        copy = DGRU(self.dim, self.depth)
+        params = self.get_parameters()
+        copy_params = copy.get_parameters()
+        for i in range(len(params)):
+            copy_params[i].set_value(params[i].get_value().copy())
+        return copy
+    
+    def cmp_grad(self, alpha, cost):
+        parameters = self.get_parameters()
+        grad = T.grad(cost, parameters)
+        return [(parameters[i], parameters[i] - alpha * grad[i]) for i in range(len(parameters))]
+    
+    def unfold_apply(self, inputs, unfold):
+        h = [None for i in range(self.depth)]
+        top_hs = []
+        for i in range(unfold):
+            h = self.apply([inputs[i]]+h)
+            top_hs += [h[-1]]
+        return T.as_tensor_variable(top_hs)
+            
+    def apply(self, inputs):
+        out = [inputs[0]]
+        for i in range(self.depth):
+            out += [self.gru.apply([out[i], inputs[i+1]])]
+        return out[1:]
