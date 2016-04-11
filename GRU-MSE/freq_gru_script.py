@@ -1,6 +1,6 @@
 from Functionals import DUGRU
 from Optimizers import RMSPROP
-from Utilities.Batcher import TDB
+from Utilities.Batcher import FDB
 from Utilities.Pickling import *
 import datetime
 import pickle
@@ -39,7 +39,7 @@ cost = theano.function([x,y], cost_exp)
 print "Creating SGD class..."
 rms = RMSPROP(x, y, gru.get_parameters(), cost_exp) #*#
 print "Creating batcher..."
-batcher = TDB("Mozart", (unfold, batch_size, segmentation)) #*#
+batcher = FDB("Mozart", (unfold, batch_size, segmentation)) #*#
 print "Creating curve..."
 curve = [] #*#
 

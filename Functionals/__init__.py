@@ -167,6 +167,13 @@ class Layer:
         if self.batch_norm_activated: parameters += [self.batch_norm.gamma]
         return parameters
         
+    def get_params(self):
+        return [self.linearity.weight.get_value(), self.bias.bias.get_value()]
+        
+    def set_params(self, params):
+        self.linearity.weight.set_value(params[0].astype(config.floatX))
+        self.bias.bias.set_value(params[1].astype(config.floatX))
+        
     def train_apply(self, inputs):
         x = self.linearity.apply(inputs)
         if self.batch_norm_activated: x = self.batch_norm.train_apply(x)
@@ -328,10 +335,14 @@ class LSTM:
 #       GRU       #
 ###################
 class GRU:
-    def __init__(self, inputs_dim, hidden_dim):
+    def __init__(self, inputs_dim, hidden_dim, noise=False):
         self.inputs_dim = inputs_dim
         self.hidden_dim = hidden_dim
         dim = inputs_dim + hidden_dim
+        
+        self.noise = noise
+        self.inputs_noise = Noise(inputs_dim)
+        self.hidden_noise = Noise(hidden_dim)
         
         self.init_h = theano.shared(np.zeros((1,hidden_dim)).astype(config.floatX), broadcastable=(True,False))
         self.read_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
@@ -342,6 +353,15 @@ class GRU:
         parameters = self.read_gate.get_parameters()+self.update_gate.get_parameters()+self.tanh_gate.get_parameters()
         return parameters+[self.init_h]
         
+    def get_params(self):
+        return [self.init_h.get_value(), self.read_gate.get_params(), self.update_gate.get_params(), self.tanh_gate.get_params()]
+        
+    def set_params(self, params):
+        self.init_h.set_value(params[0].astype(config.floatX))
+        self.read_gate.set_params(params[1])
+        self.update_gate.set_params(params[2])
+        self.tanh_gate.set_params(params[3])
+            
     def copy(self):
         copy = GRU(self.inputs_dim, self.hidden_dim)
         params = self.get_parameters()
@@ -358,10 +378,14 @@ class GRU:
     def apply(self, inputs):
         x, h = inputs
         if h is None: h = self.init_h
-        hx = T.concatenate([h*T.ones((x.shape[0], h.shape[1])),x], axis=1)
+        h = h*T.ones((x.shape[0], h.shape[1]))
+        if self.noise:
+            x = self.inputs_noise.apply(x)
+            h = self.hidden_noise.apply(h)
+        hx = T.concatenate([h,x], axis=1)
         read = self.read_gate.apply(hx)
         update = self.update_gate.apply(hx)
-        rx = T.concatenate([read,x], axis=1)
+        rx = T.concatenate([h*read,x], axis=1)
         tanh = self.tanh_gate.apply(rx)
         return h*(1-update) + tanh*update
     
@@ -370,10 +394,10 @@ class GRU:
 #      DUGRU      #
 ###################
 class DUGRU: #Deep Unshared GRU
-    def __init__(self, struct):
+    def __init__(self, struct, noise=False):
         self.struct = struct
         self.depth = len(struct)-1
-        self.grus = [GRU(struct[i], struct[i+1]) for i in range(self.depth)]
+        self.grus = [GRU(struct[i], struct[i+1], noise) for i in range(self.depth)]
         
     def get_parameters(self):
         parameters = []
@@ -381,6 +405,12 @@ class DUGRU: #Deep Unshared GRU
             parameters += self.grus[i].get_parameters()
         return parameters
     
+    def get_params(self):
+        return [self.grus[i].get_params() for i in range(self.depth)]
+        
+    def set_params(self, params):
+        for i in range(self.depth): self.grus[i].set_params(params[i])
+        
     def copy(self):
         copy = DUGRU(self.struct)
         params = self.get_parameters()
@@ -413,13 +443,19 @@ class DUGRU: #Deep Unshared GRU
 #       DGRU      #
 ###################
 class DGRU: #Deep GRU
-    def __init__(self, dim, depth):
+    def __init__(self, dim, depth, noise=False):
         self.dim = dim
         self.depth = depth
-        self.gru = GRU(dim, dim)
+        self.gru = GRU(dim, dim, noise=noise)
         
     def get_parameters(self):
         return self.gru.get_parameters()
+    
+    def get_params(self):
+        return self.gru.get_params()
+        
+    def set_params(self, params):
+        self.gru.set_params(params)
     
     def copy(self):
         copy = DGRU(self.dim, self.depth)

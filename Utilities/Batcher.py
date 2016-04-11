@@ -21,6 +21,12 @@ class TDB: #Time Domain Batcher
         
         self.n_batch = 0
         
+    def get_params(self):
+        return [self.n_batch]
+        
+    def set_params(self, params):
+        self.n_batch = params[0]
+            
     def get_random_batch(self):
         self.n_batch += 1
         n_seq, batch_size, seq_lenght = self.batch_dim
@@ -64,12 +70,18 @@ class FDB: #Frequency Domain Batcher
         self.valid = self.preprocess.cmp(self.sound[-self.valid_len:])
         
         self.n_batch = 0
+    
+    def get_params(self):
+        return [self.n_batch]
         
+    def set_params(self, params):
+        self.n_batch = params[0]
+    
     def get_random_batch(self):
         self.n_batch += 1
         n_seq, batch_size, seq_lenght = self.batch_dim
         sound = self.train
-        max = sound.shape[0]-n_seq+1
+        max = sound.shape[0]-(n_seq+1)
         starts = np.random.randint(0,max,batch_size)
         x = np.swapaxes(np.asarray([sound[s:s+n_seq] for s in starts]),0,1)
         y = np.swapaxes(np.asarray([sound[s+1:s+(n_seq+1)] for s in starts]),0,1)
