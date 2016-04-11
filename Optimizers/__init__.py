@@ -49,8 +49,8 @@ class uSGD:
 #############
 class RMSPROP:
     def __init__(self, x, y, params, cost, epsilon=1e-6):
-        self.eta = T.dscalar("eta")
-        self.rho = T.dscalar("rho")
+        self.eta = T.scalar("eta")
+        self.rho = T.scalar("rho")
         self.r = []
         self.updates = []
         grads = T.grad(cost=cost, wrt=params)
