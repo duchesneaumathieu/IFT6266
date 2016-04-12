@@ -483,3 +483,43 @@ class DGRU: #Deep GRU
         for i in range(self.depth):
             out += [self.gru.apply([out[i], inputs[i+1]])]
         return out[1:]
+    
+###################
+#      DUGRUL     #
+###################
+class DUGRUL: #Deep Unshared GRU with additinal in/out layers
+    def __init__(self, dim_in, dim_out, struct, noise=False):
+        self.layer_in = Layer(dim_in, struct[0], T.tanh)
+        self.layer_out = Layer(struct[-1], dim_out, T.tanh)
+        self.struct = struct
+        self.depth = len(struct)-1
+        self.grus = [GRU(struct[i], struct[i+1], noise) for i in range(self.depth)]
+        
+    def get_shared(self):
+        parameters = []
+        for i in range(self.depth):
+            parameters += self.grus[i].get_parameters()
+        return self.layer_in.get_parameters()+self.layer_out.get_parameters()+parameters
+    
+    def get_params(self):
+        grus_params = [self.grus[i].get_params() for i in range(self.depth)]
+        return grus_params+[self.layer_in.get_params()]+[self.layer_out.get_params()]
+        
+    def set_params(self, params):
+        for i in range(self.depth): self.grus[i].set_params(params[i])
+        self.layer_in.set_params(params[-2])
+        self.layer_out.set_params(params[-1])
+    
+    def unfold_apply(self, inputs, unfold):
+        h = [None for i in range(self.depth)]
+        top_hs = []
+        for i in range(unfold):
+            h = self.apply([self.layer_in.apply(inputs[i])]+h)
+            top_hs += [self.layer_out.apply(h[-1])]
+        return T.as_tensor_variable(top_hs)
+            
+    def apply(self, inputs):
+        out = [inputs[0]]
+        for i in range(self.depth):
+            out += [self.grus[i].apply([out[i], inputs[i+1]])]
+        return out[1:]

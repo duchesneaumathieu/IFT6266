@@ -1,4 +1,4 @@
-from Functionals import DUGRU
+from Functionals import DUGRUL
 from Optimizers import RMSPROP
 from Utilities.Batcher import TDB
 from Utilities.Pickling import *
@@ -10,23 +10,22 @@ import numpy as np
 import os.path
 import sys
 
-if len(sys.argv)!=10:
-    print ("python time_gru_script.py <pickle name> <unfold> <batch size> <segmentation> <depth> "
+if len(sys.argv)!=9:
+    print ("python time_gru_script.py <pickle name> <unfold> <batch size> <dim in> "
            "<#grad step> <#loop> <saving delay> <eta>")
     sys.exit()
     
 name = sys.argv[1]+".pkl"
 unfold = int(sys.argv[2])
 batch_size = int(sys.argv[3])
-segmentation = int(sys.argv[4])
-depth = int(sys.argv[5])
-epoch_save = int(sys.argv[6])
-epoch_max = int(sys.argv[7])
-saving_delay = int(sys.argv[8])
-eta = float(sys.argv[9])
+dim_in = int(sys.argv[4])
+epoch_save = int(sys.argv[5])
+epoch_max = int(sys.argv[6])
+saving_delay = int(sys.argv[7])
+eta = float(sys.argv[8])
 
 print "Creating model..."
-gru = DUGRU([segmentation]*(depth+1), noise=False) #*#
+gru = DUGRUL(dim_in, dim_in, [200,200,200], noise=False) #*#
 print "Creating x and y..."
 x = T.tensor3("x")
 y = T.tensor3("y")
@@ -37,9 +36,9 @@ cost_exp = T.mean(T.sqr(unfold_exp[-1]-y[-1]))
 print "Creating cost function..."
 cost = theano.function([x,y], cost_exp)
 print "Creating SGD class..."
-rms = RMSPROP(x, y, gru.get_parameters(), cost_exp) #*#
+rms = RMSPROP(x, y, gru.get_shared(), cost_exp) #*#
 print "Creating batcher..."
-batcher = TDB("Mozart", (unfold, batch_size, segmentation)) #*#
+batcher = TDB("XqaJ2Ol5cC4", (unfold, batch_size, dim_in), n_valid=2) #*#
 print "Creating curve..."
 curve = [] #*#
 
