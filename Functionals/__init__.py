@@ -345,9 +345,9 @@ class GRU:
         self.hidden_noise = Noise(hidden_dim)
         
         self.init_h = theano.shared(np.zeros((1,hidden_dim)).astype(config.floatX), broadcastable=(True,False))
-        self.read_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
+        self.read_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="rand")
         self.update_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
-        self.tanh_gate = Layer(dim, hidden_dim, T.tanh, weight_ini="iso")
+        self.tanh_gate = Layer(dim, hidden_dim, T.tanh, weight_ini="rand")
         
     def get_parameters(self):
         parameters = self.read_gate.get_parameters()+self.update_gate.get_parameters()+self.tanh_gate.get_parameters()
