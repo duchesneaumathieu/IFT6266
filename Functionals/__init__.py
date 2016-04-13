@@ -26,13 +26,8 @@ class Linearity:
         if ini == "zeros":
             w = theano.shared(np.zeros((self.dim_in, self.dim_out)).astype(config.floatX))
         elif ini == "iso":
-            d = max(self.dim_in, self.dim_out)
-            M = np.random.normal(size=(d, d))
-            U = np.linalg.eig(np.dot(M.T, M))[1]
-            if self.dim_in < self.dim_out:
-                w = theano.shared(U[:self.dim_in, :self.dim_out].astype(config.floatX))
-            else:
-                w = theano.shared((U[:self.dim_in, :self.dim_out]*(np.sqrt(self.dim_in/float(self.dim_out)))).astype(config.floatX))
+            u, _, v = np.linalg.svd(np.random.normal(0,1,(self.dim_in, self.dim_out)), full_matrices=False)
+            w = theano.shared((u if u.shape == (self.dim_in, self.dim_out) else v).astype(config.floatX))
         else: #rand
             w = theano.shared(((np.random.random((self.dim_in, self.dim_out))-0.5)/np.sqrt(self.dim_in+self.dim_out)).astype(config.floatX))
         return w
@@ -345,9 +340,9 @@ class GRU:
         self.hidden_noise = Noise(hidden_dim)
         
         self.init_h = theano.shared(np.zeros((1,hidden_dim)).astype(config.floatX), broadcastable=(True,False))
-        self.read_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="rand")
-        self.update_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="rand")
-        self.tanh_gate = Layer(dim, hidden_dim, T.tanh, weight_ini="rand")
+        self.read_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
+        self.update_gate = Layer(dim, hidden_dim, T.nnet.sigmoid, weight_ini="iso")
+        self.tanh_gate = Layer(dim, hidden_dim, T.tanh, weight_ini="iso")
         
     def get_parameters(self):
         parameters = self.read_gate.get_parameters()+self.update_gate.get_parameters()+self.tanh_gate.get_parameters()
