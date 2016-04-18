@@ -494,7 +494,7 @@ class DUGRUL: #Deep Unshared GRU with additinal in/out layers
         parameters = []
         for i in range(self.depth):
             parameters += self.grus[i].get_parameters()
-        return self.layer_out.get_parameters()+parameters#+self.layer_in.get_parameters()
+        return self.layer_in.get_parameters()+self.layer_out.get_parameters()+parameters
     
     def get_params(self):
         grus_params = [self.grus[i].get_params() for i in range(self.depth)]
