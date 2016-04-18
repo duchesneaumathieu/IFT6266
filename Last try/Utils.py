@@ -29,11 +29,13 @@ class Batcher:
         self.batch_dim = batch_dim
         self.n_batch = 0
         self.train_max = self.train_data.shape[0]-batch_dim[0]-batch_dim[1]*batch_dim[2]-1
+        self.starts = np.arange(0, self.train_max-batch_dim[2], batch_dim[0])
+        np.random.shuffle(self.starts)
         
     def get_batch(self):
         self.n_batch += 1
         batch_dim = self.batch_dim
-        start = (self.n_batch*batch_dim[0])%self.train_max
+        start = self.starts[self.n_batch%self.starts.shape[0]]
         x_data = np.asarray([self.train_data[start+i:start+i+batch_dim[1]*batch_dim[2]].reshape((batch_dim[1], batch_dim[2])) for i in range(batch_dim[0])])
         y_data = np.asarray([self.train_data[start+i+batch_dim[2]:start+i+(batch_dim[1]+1)*batch_dim[2]].reshape((batch_dim[1], batch_dim[2])) for i in range(batch_dim[0])])
         return x_data, y_data

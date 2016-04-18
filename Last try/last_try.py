@@ -78,8 +78,8 @@ for i in range(epoch_max):
         print ", Pickling model..."
         pickling_parametric_model(name, best_map)
         t1 = datetime.datetime.now()
-    print_var = (batcher.get_percentage(), i, current_cost, best_cost)
-    sys.stdout.write('\r%d%% and %d loops completed, current cost:%f vs best cost:%f'%print_var)
+    print_var = (batcher.get_percentage(), i, current_cost, best_cost, curve.train_curve[-1])
+    sys.stdout.write('\r%d%% and %d loops completed, current cost:%f vs best cost:%f, current train cost:%f'%print_var)
     sys.stdout.flush()
 
 print ""
